@@ -1,0 +1,60 @@
+Xtensa TRAX decoder.
+
+Xtensa TRAX records control flow events of the xtensa CPU in a circular buffer
+until PC reaches specific address region or until stopped externally. Once
+recording is stopped the ring buffer may be dumped and decoded. This project
+provides a tool (trax-decode) that decodes binary dumps of TRAX v3 circular
+buffer into a sequence of control transfers, a script (trax-trace.sh) that
+uses that output to produce disassembly of executed instructions and a script
+(trax-trace-raw.sh) that does the same using textual dumps produced by the
+xtensa linux kernel as input. The scripts are most useful in the XIP
+configuration when every piece of traced code is mapped to a fixed location in
+the shared address space. This is the case with e.g. ESP32[S3] linux kernel
+running from FLASH with CRAMFS rootfs set up for XIP.
+
+TRAX dumps.
+
+TRAX circular buffer may be dumped by the xtensa linux kernel automatically on
+certain events, such as unhandled exceptions. See trax_dump() function usage
+in the xtensa linux kernel for that.
+TRAX circular buffer is also available through the /proc/trax special file.
+The following commands are supported by this file:
+- echo start > /proc/trax : starts tracing without specific stop trigger.
+- echo stop > /proc/trax : stops tracing and makes /proc/trax readable.
+- echo dump > /proc/trax : stops tracing and dumps TRAX ring buffer to the
+  console. If repeated it will dump the same buffer.
+- echo [!]PC[/mask] > /proc/trax : starts tracing with PC match stop trigger.
+  The trace will stop when PC matches (or not matches, if `!` is present)
+  given `PC` (with `mask` least significant bits ignored).
+When tracing is stopped circular buffer contents may be read in binary form
+from /proc/trax or the following command may be used to dump it in
+human-readable form:
+  hexdump -e ' 16/4 "%08x " "\n"' -v /proc/trax
+
+Configuring.
+
+trax-trace.sh needs the vmlinux image and xtensa disassembler to do kernel
+tracing. It needs cramfs image of the rootfs, directory it's been produced
+from, cramfsck tool with support for address backtracing (-t option) and
+xtensa disassembler to do userspace tracing.
+The locations of the above files and address ranges for the kernel and rootfs
+may be passed in the command line or in the config file. The config file
+trax-trace.conf from the current directory is read by default when it exists.
+See the trax-trace.sh for more details.
+The following config may be used for the esp32s3 in the esp32-linux-build
+directory:
+--->8---
+base=build/build-buildroot-esp32s3
+XTENSA_GNU_CONFIG=${XTENSA_GNU_CONFIG:-build/xtensa-dynconfig/esp32s3.so}
+OBJDUMP=$base/host/bin/xtensa-linux-uclibcfdpic-objdump
+CRAMFSCK=cramfs-tools/cramfsck
+
+kernel_start=0x4037c000
+kernel_end=0x42480000
+kernel=$base/build/linux-xtensa-*/vmlinux
+rootfs_start=0x42480000
+rootfs_end=0x42800000
+rootfs=$base/images/rootfs.cramfs
+rootfs_base_dir=$base/target/
+trax_log=trax.log
+--->8---
